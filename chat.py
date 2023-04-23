@@ -1,20 +1,23 @@
-import os, types, gc, sys
+import json
+from rwkv.utils import PIPELINE
+from rwkv.model import RWKV
+import torch
+import copy
+from prompt_toolkit import prompt
+import numpy as np
+import os
+import types
+import gc
+import sys
 current_path = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(f'{current_path}/../rwkv_pip_package/src')
 
-import numpy as np
-from prompt_toolkit import prompt
 np.set_printoptions(precision=4, suppress=True, linewidth=200)
 
-import copy
-import torch
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.allow_tf32 = True
 torch.backends.cuda.matmul.allow_tf32 = True
-from rwkv.model import RWKV
-from rwkv.utils import PIPELINE
 
-import json
 
 class Chat:
     model_tokens = []
@@ -56,7 +59,8 @@ class Chat:
         tokens = [int(x) for x in tokens]
         self.model_tokens += tokens
         while len(tokens) > 0:
-            out, self.model_state = self.model.forward(tokens[:self.CHUNK_LEN], self.model_state)
+            out, self.model_state = self.model.forward(
+                tokens[:self.CHUNK_LEN], self.model_state)
             tokens = tokens[self.CHUNK_LEN:]
 
         out[self.END_OF_LINE] += newline_adj  # adjust \n probability
@@ -83,17 +87,21 @@ class Chat:
         self.bot = bot
         self.model_tokens = []
         self.model_state = None
-        init_prompt = f"The following is a coherent verbose detailed conversation between a Chinese girl named {bot} and her friend {user}. {bot_persona}\n\n"
+        init_prompt = ""
 
-        init_prompt += f"{example_dialogue}".replace(
-            '{{user}}', user).replace('{{bot}}', bot)
+        if (len(bot_persona) > 0):
+            init_prompt += f"The following is a coherent verbose detailed conversation between a Chinese girl named {bot} and her friend {user}. {bot_persona}\n\n"
 
+        if (len(example_dialogue) > 0):
+            init_prompt += f"{example_dialogue}".replace(
+                '{{user}}', user).replace('{{bot}}', bot)
+                
         init_prompt = init_prompt.strip().split('\n')
         for c in range(len(init_prompt)):
-            init_prompt[c] = init_prompt[c].strip().strip('\u3000').strip('\r')
+            init_prompt[c] = init_prompt[c].strip().strip(
+                '\u3000').strip('\r')
         init_prompt = '\n' + ('\n'.join(init_prompt)).strip() + '\n\n'
 
-        print(init_prompt)
 
         out = self.run_rnn(self.pipeline.encode(init_prompt))
         self.save_all_stat('', 'chat_init', out)
@@ -108,10 +116,10 @@ class Chat:
 
     def on_message(self, message, top_p, temperature, presence_penalty, frequency_penalty):
         msg = message.replace('\\n', '\n').strip()
-        out= self.load_all_stat(self.srv_chat, 'chat')
+        out = self.load_all_stat(self.srv_chat, 'chat')
         new = f"{self.user}: {msg}\n\n{self.bot}:"
-        #new = f" {msg}\n{self.bot}: "
-        out= self.run_rnn(self.pipeline.encode(new), newline_adj=-999999999)
+        # new = f" {msg}\n{self.bot}: "
+        out = self.run_rnn(self.pipeline.encode(new), newline_adj=-999999999)
         self.save_all_stat(self.srv_chat, 'chat_pre', out)
         return self.gen_msg(out, top_p, temperature, presence_penalty, frequency_penalty)
 
@@ -123,15 +131,18 @@ class Chat:
             if i <= 0:
                 newline_adj = -999999999
             elif i <= self.CHAT_LEN_SHORT:
-                newline_adj = (i -   self.CHAT_LEN_SHORT) / 10
+                newline_adj = (i - self.CHAT_LEN_SHORT) / 10
             elif i <= self.CHAT_LEN_LONG:
                 newline_adj = 0
             else:
-                newline_adj = min(3, (i - self.CHAT_LEN_LONG) * 0.25)  # MUST END THE GENERATION
+                newline_adj = min(3, (i - self.CHAT_LEN_LONG)
+                                  * 0.25)  # MUST END THE GENERATION
 
             for n in occurrence:
-                out[n] -= (presence_penalty + occurrence[n] * frequency_penalty)
-            token = self.pipeline.sample_logits(out, temperature=temperature, top_p=top_p)
+                out[n] -= (presence_penalty + occurrence[n]
+                           * frequency_penalty)
+            token = self.pipeline.sample_logits(
+                out, temperature=temperature, top_p=top_p)
             if token not in occurrence:
                 occurrence[token] = 1
             else:
@@ -144,19 +155,19 @@ class Chat:
             if '\ufffd' not in xxx:  # avoid utf-8 display issues
                 out_last = begin + i + 1
 
-            send_msg:str = self.pipeline.decode(self.model_tokens[begin:])
-         
+            send_msg: str = self.pipeline.decode(self.model_tokens[begin:])
+
             if '\n\n' in send_msg:
                 send_msg = send_msg.strip()
                 break
-            
+
             idx = send_msg.find(f'{self.user}:')
             if idx >= 0:
                 send_msg = f' {send_msg[:idx].strip()}\n\n'
                 tokens = self.pipeline.encode(send_msg)
                 self.load_all_stat(self.srv_chat, 'chat_pre')
                 out = self.run_rnn(tokens)
-                send_msg = send_msg.strip()     
+                send_msg = send_msg.strip()
 
             idx = send_msg.find(f'{self.bot}:')
             if idx >= 0:
@@ -167,5 +178,5 @@ class Chat:
                 send_msg = send_msg.strip()
 
         self.save_all_stat(self.srv_chat, 'chat', out)
-                   
+
         return send_msg
