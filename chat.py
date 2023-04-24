@@ -1,6 +1,4 @@
 import json
-from rwkv.utils import PIPELINE
-from rwkv.model import RWKV
 import torch
 import copy
 from prompt_toolkit import prompt
@@ -11,6 +9,8 @@ import gc
 import sys
 current_path = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(f'{current_path}/../rwkv_pip_package/src')
+from rwkv.utils import PIPELINE
+from rwkv.model import RWKV
 
 np.set_printoptions(precision=4, suppress=True, linewidth=200)
 
@@ -37,6 +37,9 @@ class Chat:
     all_state = {}
     user = "Bob"
     bot = "Alice"
+    
+    rep = ""
+    last_rep = ""
 
     def __init__(self, model_path, strategy):
         np.set_printoptions(precision=4, suppress=True, linewidth=200)
@@ -121,11 +124,21 @@ class Chat:
         # new = f" {msg}\n{self.bot}: "
         out = self.run_rnn(self.pipeline.encode(new), newline_adj=-999999999)
         self.save_all_stat(self.srv_chat, 'chat_pre', out)
-        return self.gen_msg(out, top_p, temperature, presence_penalty, frequency_penalty)
+
+        self.rep = self.gen_msg(out, top_p, temperature, presence_penalty, frequency_penalty)
+        if (self.rep == self.last_rep):
+            tokens = self.model_tokens[len(self.model_tokens) // 2:]
+            self.load_all_stat(self.srv_chat, 'chat_pre')
+            out = self.run_rnn(tokens)
+            self.save_all_stat(self.srv_chat, 'chat', out)
+
+        else:
+            self.last_rep = self.rep
+
+        return self.rep
 
     def gen_msg(self, out, top_p, temperature, presence_penalty, frequency_penalty):
         begin = len(self.model_tokens)
-        out_last = begin
         occurrence = {}
         for i in range(999):
             if i <= 0:
@@ -151,10 +164,6 @@ class Chat:
             out = self.run_rnn([token], newline_adj=newline_adj)
             out[self.END_OF_TEXT] = -999999999  # disable <|endoftext|>
 
-            xxx = self.pipeline.decode(self.model_tokens[out_last:])
-            if '\ufffd' not in xxx:  # avoid utf-8 display issues
-                out_last = begin + i + 1
-
             send_msg: str = self.pipeline.decode(self.model_tokens[begin:])
 
             if '\n\n' in send_msg:
@@ -176,7 +185,10 @@ class Chat:
                 out = self.load_all_stat(self.srv_chat, 'chat_pre')
                 out = self.run_rnn(tokens)
                 send_msg = send_msg.strip()
+        
+         
 
         self.save_all_stat(self.srv_chat, 'chat', out)
+
 
         return send_msg
