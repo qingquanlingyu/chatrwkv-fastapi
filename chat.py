@@ -126,16 +126,16 @@ class Chat:
         self.save_all_stat(self.srv_chat, 'chat_pre', out)
 
         self.rep = self.gen_msg(out, top_p, temperature, presence_penalty, frequency_penalty)
-        if (self.rep == self.last_rep):
-            tokens = self.model_tokens[len(self.model_tokens) // 2:]
-            self.load_all_stat(self.srv_chat, 'chat_pre')
-            out = self.run_rnn(tokens)
-            self.save_all_stat(self.srv_chat, 'chat', out)
+        while (self.rep == self.last_rep):
+            self.load_all_stat('', 'chat_init')
+            out = self.run_rnn(self.pipeline.encode(new), newline_adj=-999999999)
+            self.save_all_stat(self.srv_chat, 'chat_pre', out)
+            self.rep = self.gen_msg(out, top_p, temperature, presence_penalty, frequency_penalty)
 
-        else:
-            self.last_rep = self.rep
+        self.last_rep = self.rep
 
         return self.rep
+
 
     def gen_msg(self, out, top_p, temperature, presence_penalty, frequency_penalty):
         begin = len(self.model_tokens)
