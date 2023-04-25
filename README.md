@@ -1,7 +1,9 @@
 # 适用于chatrwkv的简单http fastapi
 ## 介绍
 根据Roleplay webui大改，重新封装了RWKV模型调用，重新设计了人设模块与加载方式
-根据cryscan的pr修复了脑补对话的bug，并修复了多轮对话复读的bug，
+
+根据cryscan的pr修复了脑补对话的bug，并修复了多轮对话复读的bug
+
 目前个人用于bot搭建，因此仅包含重置和直接对话的功能
 
 ## 启动
